@@ -1,0 +1,409 @@
+---
+title: "nlp_strategy by Luis Felipe Villota"
+output:
+  html_document: default
+  pdf_document: default
+date: "2023-02-08"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Insights from military strategy literature: Exploring the role of strategy in 4 popular works available in the Gutenberg Project.
+
+In the present report, we conduct a descriptive content analysis on 4 popular works (top 4 most downloaded books) on war/military strategy available in Gutenberg Project's archives applying text mining with the tidy approach in R (see Silge & Robinson for the guiding code, 2017; see Grimmer & Stewart for the principles of automated text analysis, 2013; 269-271). We have a nomothetic approach for this report by summarizing content across a selection of books (although we acknowledge a small sample of text corpus) (Neuendorf, 2017; 23-24). The aim is two-fold: 1.) quantitatively explore/describe the content of the mentioned repository (free source) offered in terms of military strategy literature and 2.) map the role of *strategy* (in an *ngram* network) according to the selection of books and authors, in order to draw insights that can analytically inform domains other than warfare (public policies, commerce, e.g.).
+
+Our work is based on the frameworks proposed by Kornberger & Vaara (2022) on strategy research (Ibid; 1-2). In their article titled *Strategy as engagement: What organization strategy can learn from military strategy* (2022), they point to an \`intersectionality between the two domains´ which has not been fully integrated (Ibid; 2). To begin with, the authors offer a conceptual development for the role of *strategy*: moving the *sociological eye* from previous research on *internal strategy practices* (focus on processes and strategy-making within an organization), onto *external engagement practices* with the ecosystem(s) beyond (an *interactionist* framing) (Ibid.; 1-3). This means to reorient current strategy research onto the nature of the practices that aim to and can exert a clout on *external* actors to favor one´s interests and agenda(s), - and have a better understanding on what changes the other´s "trajectory" through competition, collaboration, or co-option (Ibid; 2-3).
+
+They stress the importance of drawing methodological-analytic lessons from military strategy literature in order to have *strategy* clearly defined (Ibid.; 8). In this sense, it is conceived here as a \`bridge between two shores´: *policy* (as big guiding principles, purposes, or *Grand Strategy*) and *tactics* (as a means, power, or material prowess) (Ibid; 2, Ibid. on Clausewitz, Gray and Admiral Wylie; 4). According to our authors, *strategy* is not something to be implemented, but a "living movement" among these two "sides" and its function is to translate \`purposes into conducts on a battlefield and vice versa´ (Ibid. on Clausewitz; 8). *Strategy* ultimately refers to an *effect* (that the two "ends" of the bridge have on one another on a constant flux) and not a concrete action or model (Ibid.; 9). Hence, it has constant change, adaptation, and evolution as salient features in order to achieve *victory* (effectively exercising power) in the long term through *policy* and never through \`operational issues of warfare´ solely (Ibid; 4, 6). Kornberger & Vaara´s work gains importance in the current context of hybrid wars, emergent AI markets, ambitious and transition-based climate change policies, among others. Continuing with the authors´ avowal, we consider useful to address core principles on *strategy* (Ibid; 10) from popular military strategy literature to navigate uncertain scenarios (as traversed by the \`fog of war´) practically (to have awareness of a given situation and to train *good judgment* that might enlighten action) (Ibid. on Clausewitz; 3, 10).
+
+### 1. Downloading and loading basic packages
+
+```{r message=FALSE, warning=FALSE}
+library(stringr)
+library(forcats)
+library(gutenbergr)
+library(tidyverse)
+library(tidytext)
+library(tm)
+library(textdata)
+library(psych)
+library(skimr)
+library(wordcloud2)
+library(tidyr)
+library(lifecycle)
+library(scales)
+library(igraph)
+library(ggraph)
+```
+
+### 2. Gathering and selecting data from the Gutenberg Project
+
+#### 2.1 Gathering metadata and creating objects to know gutenberg_id´s to identify all books in the Gutenberg Project archive.
+
+```{r}
+
+gut_works <-data.frame(gutenberg_works())
+
+str(gut_works) 
+# We have data frame with 53,840 different gutenberg_id's (total number of rows). There are 8 variables ("gutenberg_id", "title",                              "author","gutenberg_author_id", "language", "gutenberg_bookshelf", "rights", "has_text")
+
+gut_meta <- gutenberg_metadata
+
+str(gut_meta) # We have a tibble with 69,199 different gutenberg_id's (total number of rows). We have the same 8 variables
+
+```
+
+#### 2.2 Selecting and importing books by subject
+
+```{r}
+gut_sub<- gutenberg_subjects
+
+        str(gut_sub) # We have tibble with 230,993 gutenberg_id's (total number of rows). There are 3 variables ("gutenberg_id", "subject_type","subject" )
+        length(unique(gut_sub$subject)) # There are 38,136 unique subjects
+        unique(gut_sub$subject_type) # There are 2 subject types "lcsh" (Library of Congress Subject Headings) and 
+                                     # "lcc" (Library of Congress Classifications).  
+```
+
+Of course, one book can be associated to different subjects and subject types. As a comment, we note that subjects are frequently 'sui generis' or very broad. However, since our objective is to analyse popular works on war/military strategy, the existing label of "Military art and science" in the Gutenberg Project might be useful to select books.
+
+```{r}
+sub_sub <- gut_sub %>% filter(subject == "Military art and science") # There are 19 works in this filtered-by-subject tibble.
+```
+
+#### 2.3 Downloading the works by subject (Military art and science) with inclusion of the metadata of title and author, - into an object (tibble) that is our initial library for this report.
+
+```{r}
+
+sub_books <- gutenberg_download(sub_sub, meta_fields = c("title", "author", "gutenberg_id"))
+
+str(sub_books) # 159,712 rows (total lines of books' content) X 4 columns ("gutenberg_id", "text", "title", "author") 
+
+```
+
+```{r}
+# List of books in the library (grouping the lines of content by gutenberg_id, author and title)
+
+sub_books %>% count(gutenberg_id, author, title) # We have 19 different books and 19 different authors in total. 
+
+# Note: The author of "Military Instructors Manual" (gutenberg_id = 14625) appears as NA, but the real author is Captain James P. Cole
+
+
+```
+
+```{r echo=FALSE}
+
+# Access date 
+
+accessdate<- date() # Date accessed 
+
+print(accessdate)
+```
+
+### 3. Exploratory Data Analysis
+
+```{r}
+# Asking a series of simple questions and doing simple steps to familiarize with the text corpora. 
+
+# a. The longest and shortest books (in terms of lines of content).
+
+sub_books %>% count(gutenberg_id, author, title) %>% arrange(desc(n)) %>% slice_head() # Longest (by lines): "Tactics, Volume 1 (of 2). Introduction and Formal Tactics of Infantry" n=23,576
+
+sub_books %>% count(gutenberg_id, author, title) %>% arrange(desc(n)) %>% slice_tail() # Shortest (by lines): "Some Principles of Frontier Mountain Warfare" n=1,143
+
+# As Grimmer & Stewart (2017; 272) point out lengthier texts are better suited for automated content analysis (more words, more data).
+
+```
+
+From here, we *tokenize* by one-word-as-a-unit using the unnest_tokens() function from the *tidytext* package.That is, having our library of 19 books on Military art and science, we *unnest* the words from the "text" column in order to have a *tidy* data frame in which each row of the mentioned column now represents a single token (one word).
+
+```{r}
+# We create the object "w_books" to save this tokenization for further operations. 
+
+w_books<- sub_books %>% unnest_tokens(word, text)
+
+# b. How many words in total are in the library?
+
+length(w_books$word) # There are 1,350,008 words in total
+
+# c. List of books in the library sorted by descending number of total words (grouping by gutenberg_id, author and title).
+
+w_books %>% group_by(gutenberg_id, author, title) %>% summarize(total = n()) %>% arrange(desc(total))
+
+# d. Which is the longest and shortest book (in terms of total word counts)?
+
+w_books %>% count(gutenberg_id, author, title) %>% arrange(desc(n)) %>% slice_head() # Longest (by words) "Tactics, Volume 1 (of 2). Introduction and Formal Tactics of Infantry" n= 186,457
+
+w_books %>% count(gutenberg_id, author, title) %>% arrange(desc(n)) %>% slice_tail() # Shortest (by words) "Some Principles of Frontier Mountain Warfare"  n= 8,929
+
+
+# e. How many unique words are in the library?
+
+w_books %>% count(word) %>% summarize(total = n()) %>% pull(total) # 48,981 unique words in total
+
+# f. List of books in the library sorted by descending number of unique words (grouping by gutenberg_id, author and title).
+
+w_books %>% group_by(gutenberg_id, author, title) %>% summarise( total = n_distinct(word)) %>% arrange(desc(total))
+
+# g. Books with the most and least amount of unique words.
+
+w_books %>% group_by(title) %>% summarise( total = n_distinct(word)) %>% arrange(desc(total)) %>% filter(row_number()==1) # Most unique words: "Della scienza militare" n=12,732
+
+w_books %>% group_by(title) %>% summarise( total = n_distinct(word)) %>% arrange(desc(total)) %>% filter(row_number()==19) # Least unique words: "Some Principles of Frontier Mountain Warfare" n=1,637
+
+```
+
+From here, we are only interested in the top 4 most popular works. Importantly, metadata on popularity (number of downloads) is not available within the functions of gutenbergr package, so it has to be access and noted manually as seen in: <https://www.gutenberg.org/ebooks/subject/89>. Where we see 'Books about Military art and science (sorted by popularity)'.
+
+In this sense, the 4 most downloaded works are:
+
+1.  "On War" by Carl von Clausewitz (gutenberg_id: 1946 ) = 2,438 downloads
+2.  "The Art of War" by Antoine Henri baron de Jomini (gutenberg_id: 13549) = 543 downloads
+3.  "The Officer's Manual: Napoleon's Maxims of War" by Emperor of the French, Napoleon I (gutenberg_id: 50750 ) = 378 downloads
+4.  "Battle Studies; Ancient and Modern Battle" by Charles Jean Jacques Joseph Ardant du Picq (gutenberg_id: 7294) = 181 downloads
+
+This as of: "Tue Jan 31 14:11:18 2023"
+
+```{r}
+
+# Hence, we create our final library of the 4 most downloaded books. 
+
+top4books <- c("1946", "13549", "50750", "7294") # List with selected gutenberg_id´s
+
+final_lib <- gutenberg_download(top4books, meta_fields = c("gutenberg_id", "author", "title")) 
+
+```
+
+### 4. Term frequency (tf), inverse document frequency (idf) and the tf-idf statistic
+
+For this part, we follow Silge & Robinson´s (2017; Chapter 3) and (see Sebastian, 2020) steps, concepts and code (customized) in order to address quantitatively what each book is about by analyzing the tf (capturing the occurrence of each word in a book from our final library), the idf (a approach that lessens the "weight" (score) of the most frequent terms in favor of "rare" or less common words) and the tf-idf index (the multiplication of the two previous measures to detect the salient/relevant/particular words in a text).
+
+```{r include=FALSE}
+
+# Unnesting tokens (words) of our final library
+
+l_b<- final_lib %>% unnest_tokens(word, text) %>% count(gutenberg_id, title, author, word, sort = TRUE)
+
+# Creating an object for total words per book 
+
+total_wordsperbook <- l_b %>% group_by(gutenberg_id, title, author) %>% summarize (total = sum(n))
+
+```
+
+```{r}
+
+# Total words per book 
+
+total_wordsperbook %>% arrange(desc(total)) # "The Art of War" by A. H Jomini has the most words n = 144,210.
+
+# Example of a filter of word count
+
+filter(total_wordsperbook, title == "Battle Studies; Ancient and Modern Battle") # Example of filter
+
+```
+
+```{r}
+# Gathering tf by id, title and author with total words per title and author together.
+
+l_b_1<- left_join(l_b, total_wordsperbook)
+
+l_b_1 %>% arrange(desc(n)) %>% head() # "the" is the most frequent word in all of the library and appears most in "The Art of War" by A. H Jomini n = 11,733.
+
+l_b_1[order(l_b_1$n),] %>% head() # On the contrary, for example, "107" is one of the least common terms n=1 found in "On War" by Clausewitz. 
+```
+
+#### 4.1 First visualizations: tf distribution and Zipf´s Law
+
+```{r}
+# Term frequency distribution: ocurrences of a word (in each of our books) divided by the total amount of words (of the respective work) (Ibid.; 3.1).
+
+ggplot(l_b_1, aes(n/total, fill = title)) +
+  geom_histogram(show.legend = FALSE) +
+  xlim(NA, 0.0009) +
+  facet_wrap(~title, ncol = 2, scales = "free_y")
+
+# We are actually interested in the long tails to help us see the amount of rare words in each of the works (those which make a book distinguishable). 
+
+# This is observed as the Zipf's law: which establishes that the occurrence of a word is inversely proportional to its rank (Ibid.; 3.2).
+
+# Example as seen in (Ibid.)
+
+f_by_rank <- l_b_1 %>% 
+  group_by(title, author) %>% 
+  mutate(rank = row_number(), 
+         `term frequency` = n/total) %>%
+  ungroup()
+
+f_by_rank
+
+f_by_rank %>% 
+  ggplot(aes(rank, `term frequency`, color = title)) + 
+  geom_line(size = 0.9, alpha = 0.3, show.legend = TRUE) + 
+  scale_x_log10() +
+  scale_y_log10()
+
+
+```
+
+#### 4.2 The tf-idf statistic
+
+```{r}
+# Gathering tf_idf by gutenberg_id, title and author with total words per title and author together (Ibid.; 3.3).
+
+lib_tf_idf <- l_b_1 %>% bind_tf_idf(word, title, n)
+
+lib_tf_idf
+
+lib_tf_idf %>% arrange(desc(tf_idf))
+
+
+# We see some important words (nouns, verbs, adjectives, etc.) for each book yet we observe some terms that apparently do not carry much meaning (fig, footnote, etc.)
+```
+
+#### 4.3 Removing stopwords
+
+```{r}
+# First, we customize a list of stopwords and then apply the anti_join() function with "stop_words" {tidytext package} as an argument (to further remove 1,149 stop words from our library).
+
+customstopwords <- tibble(word =   c("1", "2", "3", "4","eq", "co", "rc", "ac", "ak", "bn", 
+"fig", "figs", "file", "cg", "cb", "cm","ab", "_k", "_k_", "_x","fig", "footnote", 
+"http", "of", "_of", "_ab_", "0", "deg","sidenote", "_a_","_b_", "_c_", "_o_",
+"_s_", "_e_", "lu", "thou", "thy", "thee", "hast", "_abcd_", "nay", "consider'd",
+"call'd", "hath", "gallery.euroweb.hu", "_an", "dost", "sayest", "seest", "thyself",
+"wilt", "cf", "m.t.h.s", "_an", "shew", "shewn", "allow'd", "_c", 
+"transcribers", "diagram", "_photo", "_mn_", "_g_", "_p_", "_v_", 
+"_ac_", "_f_", "_d_", "_ad_", "_ef_", "tho", "mention'd", 
+"turn'd", "shewing", "form'd", "design'd", "etc", "chapter"))
+
+tidy_words <- final_lib %>% unnest_tokens(word, text) %>%
+  count(gutenberg_id, author, title, word, sort = TRUE) %>% anti_join(stop_words)%>%
+                anti_join(customstopwords) 
+```
+
+#### 4.4 Second visualization: tf-idf by title (without stopwords)
+
+```{r}
+# Visualizing tf_idf according to (Ibid.). Here the top 20 words (most ranked). 
+
+tidy_words_1 <- tidy_words  %>% bind_tf_idf(word, title, n) 
+
+tidy_words_1 %>%
+  group_by(title) %>%
+  slice_max(tf_idf, n = 20) %>%
+  ungroup() %>%
+  ggplot(aes(tf_idf, fct_reorder(word, tf_idf), fill = title)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~title, ncol = 4, scales = "free") +
+  labs(x = "tf-idf", y = NULL)
+```
+
+#### 4.5 Wordcloud
+
+```{r}
+
+# Wordcloud2 tf_idf 
+
+w_cloud <- wordcloud2(tidy_words_1 %>% count(word, tf_idf, wt= tf_idf, sort = TRUE), 
+        minSize = 0, gridSize = 0, fontFamily = "mono", 
+        fontWeight = "normal", color = "random-light", backgroundColor = "grey", 
+        minRotation = -pi/4, maxRotation = pi/4, shuffle = TRUE, rotateRatio = 0.4, 
+        shape = "diamond", ellipticity = 0.65, widgetsize = NULL, figPath = NULL, 
+        hoverFunction = NULL
+)
+
+w_cloud + WCtheme(2) + WCtheme(3) 
+
+```
+
+### 5. **Relationships between words**
+
+#### 5.1 Tokenizing by n-grams
+
+```{r}
+
+# Token= bigram. According to (Ibid.; 4.1) 
+
+strategy_bigrams <-final_lib %>% unnest_tokens(bigram, text, token = "ngrams", n= 2) %>% filter(!is.na(bigram))
+
+strategy_bigrams # one token (a bigram) per row
+```
+
+#### 5.2 Counting initial bigrams, removing stop words and final count
+
+```{r}
+strategy_bigrams %>% count(bigram, sort= TRUE)
+
+# A significant amount of our tokens here include words without much meaning for our report such as "the", "of", "an", etc. Hence, we remove them (Ibid.; 4.1.1): 
+
+tidy_bigrams <-strategy_bigrams %>% separate(bigram,c("word1","word2"), sep = " ")
+
+tidy_bigrams_1 <- tidy_bigrams %>% filter(!word1 %in% stop_words$word) %>% filter(!word2 %in% stop_words$word) %>% filter(!word1 %in% customstopwords) %>% filter(!word2 %in% customstopwords) 
+
+# New count after filtering the stopwords for the two words composing our token unit (Ibid.): 
+
+final_bigrams <- tidy_bigrams_1 %>% 
+  count(word1, word2, sort = TRUE)
+
+final_bigrams # The bigram is separated in 2 columns. 
+
+```
+
+```{r}
+
+# Gathering/unifying bigrams 
+
+final_bigrams_together <- final_bigrams %>% unite(bigram, word1,word2, sep = " ")
+
+final_bigrams_together 
+
+```
+
+#### 5.3 Exploring bigrams: filtering for strategy
+
+```{r}
+
+# Example of filter to see the most common context of the word "strategy" (located at the end of a bigram) in each book. 
+
+tidy_bigrams_1 %>%
+  filter(word2 == "strategy") %>%
+  count(title, word1, sort = TRUE)
+```
+
+#### 5.5 Visualizing the network
+
+```{r}
+
+# Using the graph_from_data_frame function (Ibid.; 4.1.4)
+
+final_bigrams_graph <- final_bigrams %>% filter(n > 10) %>% graph_from_data_frame()
+ 
+final_bigrams_graph
+
+set.seed(2023) # setting seed
+
+arrow <- grid::arrow(type = "closed", length = unit(.15, "inches"))
+
+# Using ggraph
+library(ggraph)
+ggraph(final_bigrams_graph, layout = "fr") +
+  geom_edge_link(aes(edge_alpha = n), show.legend = FALSE,
+                 arrow = arrow, end_cap = circle(.07, 'inches')) +
+  geom_node_point(color = "red", size = 2) +
+  geom_node_text(aes(label = name), vjust = 1, hjust = 1) +
+  theme_void()
+
+
+```
+
+### References
+
+Grimmer, J., & Stewart, B. M. (2013). Text as Data: The Promise and Pitfalls of Automatic Content Analysis Methods for Political Texts. *Political Analysis*, *21*(3), 267--297. <https://doi.org/10.1093/pan/mps028>
+
+Kornberger, M., & Vaara, E. (2022). Strategy as engagement: What organization strategy can learn from military strategy. *Long Range Planning*, *55*(4), 102125. <https://doi.org/10.1016/j.lrp.2021.102125>
+
+Neuendorf, K. A. (2017). *The Content Analysis Guidebook*. SAGE Publications, Inc. <https://doi.org/10.4135/9781071802878>
+
+Sebastian, A. (2020, July 16). *A Gentle Introduction To Calculating The TF-IDF Values*. Medium. <https://towardsdatascience.com/a-gentle-introduction-to-calculating-the-tf-idf-values-9e391f8a13e5>
+
+Silge, J., & Robinson, D. (2017). *Text Mining with R: A Tidy Approach* (1st edition). O'Reilly Media. <https://www.tidytextmining.com/index.html>
